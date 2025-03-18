@@ -15,8 +15,8 @@ from src.Structure.Structure1D import Structure1D
 
 from .Template import CalculatorTemplate
 
-BASIC_TEMPLATE_MOPAC = 'AUX LARGE CHARGE=0 SINGLET GEO-OK NOREOR HESS=0 PDBOUT PRTXYZ ITRY=500 AM1 NOSYM RECALC=10'
-class MopacCalculator(CalculatorTemplate):
+BASIC_TEMPLATE_MOPAC = 'AUX LARGE CHARGE=0 SINGLET GEO-OK NOREOR PDBOUT PRTXYZ ITRY=500 PM6-D3H4X NOSYM RECALC=5 MOZYME PRECISE=500'
+class MopacCalculator():
     """Простой калькулятор для запуска расчетов в прогамме MOPAC. Запуск расчетов осуществляется методом run.
     """
 
@@ -30,7 +30,12 @@ class MopacCalculator(CalculatorTemplate):
         Returns:
             str: _description_
         """
-        template = template
+        
+        if template:
+            pass
+        else:
+            template = BASIC_TEMPLATE_MOPAC
+
         template =[template, '\n', '\n\n']
         for atom in compound.structure:
             atom_ = str(atom).split()
@@ -82,7 +87,7 @@ class MopacCalculator(CalculatorTemplate):
         subprocess.call([exec, calc_dir/'input.mop'])
         return calc_dir/'input.out'
 
-    def run(self, root_dir:Path, compound:Structure1D, exec:str = None) -> str:
+    def run(self, root_dir:Path, compound:Structure1D, exec:str = None, template:str = BASIC_TEMPLATE_MOPAC) -> str:
         """Пайплайн, который запускает квантовохимический расчет.
 
         Args:
@@ -94,7 +99,7 @@ class MopacCalculator(CalculatorTemplate):
             (str): путь к выходному файлу.
         """
         # Make intput
-        calc_dir = self._ave_input(self._make_template(compound=compound), compound=compound, root_dir=root_dir)
+        calc_dir = self._save_input(self._make_template(compound=compound, template=template), compound=compound, root_dir=root_dir)
         # Run it
         exec = exec or 'mopac'
         path_to_out = self._run_task(calc_dir=calc_dir, exec=exec)

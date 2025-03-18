@@ -2,7 +2,9 @@ import json
 from turtle import update
 
 from attrs import define, field
+
 from src.Basic.Atom import Atom
+from src.Basic.utilites import make_gui_f1, ATOMS
 from src.Symmetry.LineGroups import LineGroup
 from src.Symmetry.PointGroups import PointGroup
 from src.Symmetry.ScrewAxis import ScrewAxis
@@ -159,8 +161,19 @@ class Structure1D(Structure1DBase):
         return cls.from_dict(d)
 
     def to_f34(self, path):
-        # TODO:
-        pass
+        import re
+        srch = re.compile(r'([A-Za-z]+)')
+
+        q, p, A = self.LG.SA.q, self.LG.SA.p, self.LG.SA.A
+
+        coords = []
+
+        for i in self.symcell:
+            result = re.search(srch, str(i))
+            atom = result.group(1)
+            coords.append(str(i).replace(atom, str(ATOMS[atom])).split())
+
+        make_gui_f1(int(q), int(p), A, coords, path)
 
     def symcell_from_xyz(self):
         # Нахожу длинну каждой орбиты

@@ -1,9 +1,10 @@
 import json
 from pathlib import Path
-import numpy as np
 
+import numpy as np
 from attrs import define, field
-from src.Basic.utilites import all_LG1F_generator
+
+from src.Basic.utilites import all_LG1F_generator, choose_groups
 from src.QChem.Calculators.Template import CalculatorTemplate
 from src.QChem.Parsers.Template import ParserTemplate
 from src.Symmetry.LineGroups import LineGroup
@@ -23,10 +24,11 @@ class HelixBase:
             raise Exception('Helix must include at least one compound')
 
     @classmethod
-    def from_compound(cls, compound:Structure1D, Q_interval:tuple[float], q_max:int):
+    def from_compound(cls, compound:Structure1D, Q_interval:tuple[float], q_max:int, torsion_interval:tuple[float]):
         # Генерируем все LG в заданом диапазоне
         # По ним создаём объекты в compounds
-        line_groups = all_LG1F_generator(q_max=q_max, Q_interval=Q_interval)
+        line_groups_ = all_LG1F_generator(q_max=q_max, Q_interval=Q_interval)
+        line_groups = choose_groups(groups=line_groups_, interval_torsion=torsion_interval)
         # compounds
         pg = compound.LG.PG
         f = compound.f
@@ -37,27 +39,40 @@ class HelixBase:
 
 class Helix(HelixBase):
 
-    def run(self, calculator:CalculatorTemplate, parser:ParserTemplate, root_dir:Path, exec:Path = None, status:str = 'Done'):
+    def run(self, calculator:CalculatorTemplate, parser:ParserTemplate, root_dir:Path, template:str=None, exec:Path = None, status:str = 'Done'):
         sides = HelixIteratorInit(self.compounds, self.init_compound.Q, direction='right'), HelixIteratorInit(self.compounds, self.init_compound.Q, direction='left')
 
         for side in sides:
-            self._run_side(calculator=calculator(), parser = parser(), side=side, exec=exec, root_dir=root_dir)
+            self._run_side(calculator=calculator(), parser=parser(), side=side, exec=exec, root_dir=root_dir, template=template)
 
-    def _run_side(self, calculator, side, parser, root_dir:Path, exec:Path=None, status:str = 'Done'):
+    def _run_side(self, calculator, side, parser, root_dir:Path, exec:Path=None, status:str = 'Done', template=None):
         symcell = None
+        f = None
         for compound in side:
             if compound.status == status:
                 continue
             else:
                 if symcell:
+                    # Обновляю данные чтобы расчет не заваливался из-за неправильной структуры
                     compound.symcell = symcell
+                    lg_dict = compound.LG.to_dict()
+                    lg_dict['SA']['A'] = compound.LG.SA.q*f
+                    compound.LG = LineGroup.from_dict(lg_dict)
                 # Калькулятор выдал путь к аут файлу
-                path_to_out = calculator.run(compound, exec=exec, root_dir=root_dir)
+                path_to_out = calculator.run(root_dir=root_dir, compound=compound, exec=exec, template=template)
                 # Распарсил данные
-                data = parser.run(path_to_out)
-                data.update({'status':status})
-                compound.update(**data)
-                symcell = compound.symcell_from_xyz()
+                # XXX Переделать try except
+                # Это сделано на тот случай, когда мономер искозился, и больше оно работать не будет
+                # ! TODO: Хранить последний удачный мономер, чтобы перезапускать расчет с него
+                try:
+                    data = parser.run(path_to_out)
+                    data.update({'status': status})
+                    compound.update(**data)
+                    symcell = compound.symcell_from_xyz()
+                    f = compound.LG.SA.f
+                    compound.to_f34(path_to_out.parent)
+                except:
+                    break
 
     def to_dict(self):
         return {i: self.compounds[i].to_dict() for i in self.compounds}
@@ -85,7 +100,6 @@ class Helix(HelixBase):
 
 class HelixIteratorInit:
     # Итератор для первоначального обхода по словарю. Сперва берет начальную точку. Потом ближаейшие к ней и т.д.
-    #  
 
     def __init__(self, helix:dict, start:float, direction:str='right'):
         # TODO: Переименовать helix
@@ -116,4 +130,3 @@ class NpEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
-
